@@ -1,157 +1,152 @@
 """
-SkyNet Bookmark Analyzer - Prototype
-====================================
-
-Script principal responsável por executar
-o pipeline completo de análise de bookmarks.
+SkyNet Bookmark Analyzer
+Pipeline principal de análise de bookmarks com SQLite incremental e exportação JSON.
 """
 
 from pathlib import Path
-import asyncio
+import sqlite3
+from typing import List
 
-from core.analysis.bookmark_analyzer import AnalysisResult, BookmarkAnalyzer
-from core.analysis.domain_analyzer import DomainAnalyzer
-from core.analysis.domain_classifier import DomainClassifier
-from core.exporters.json_exporter import JSONExporter
-from core.network.link_checker import LinkChecker, LinkStatus
 from core.parser.bookmark_parser import BookmarkParser, Bookmark
+from core.analysis.bookmark_analyzer import BookmarkAnalyzer, AnalysisResult
+from core.exporters.json_exporter import JSONExporter
+
+DB_PATH = Path("data/history.db")
+OUTPUT_FILE = Path("output/bookmarks_analysis.json")
 
 
-# ---------------------------------------------------------
-# PATHS
-# ---------------------------------------------------------
+def init_db() -> None:
+    """Cria as tabelas do banco de dados caso não existam."""
+    conn: sqlite3.Connection = sqlite3.connect(DB_PATH)
+    c: sqlite3.Cursor = conn.cursor()
+    c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            url TEXT UNIQUE,
+            domain TEXT,
+            category TEXT,
+            add_date TEXT,
+            folder TEXT,
+            last_checked TIMESTAMP,
+            status TEXT
+        );
 
-INPUT_FILE: Path = Path.home() / "Documents/bookmarks_3_5_26.html"
-OUTPUT_JSON: Path = Path("../output/bookmarks_analysis.json")
+        CREATE TABLE IF NOT EXISTS domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT UNIQUE,
+            count INTEGER
+        );
 
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT UNIQUE,
+            count INTEGER
+        );
 
-# ---------------------------------------------------------
-# PIPELINE STEPS
-# ---------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS links_status (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bookmark_id INTEGER,
+            status TEXT,
+            response_time REAL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id)
+        );
 
-
-def parse_bookmarks() -> list[Bookmark]:
+        CREATE TABLE IF NOT EXISTS analysis_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            total_bookmarks INTEGER,
+            unique_domains INTEGER,
+            duplicate_count INTEGER,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """
-    Lê e interpreta o arquivo HTML de bookmarks.
-    """
-
-    print("📂 Lendo arquivo de bookmarks...")
-
-    parser = BookmarkParser(str(INPUT_FILE))
-    bookmarks: list[Bookmark] = parser.parse()
-
-    print(f"✅ {len(bookmarks)} bookmarks carregados")
-
-    return bookmarks
+    )
+    conn.commit()
+    conn.close()
 
 
-def analyze_bookmarks(bookmarks: list[Bookmark]) -> AnalysisResult:
-    """
-    Executa análise estrutural dos bookmarks.
-    """
-
-    print("🔎 Analisando bookmarks...")
-
-    analyzer = BookmarkAnalyzer()
-    analysis = analyzer.analyze(bookmarks)
-
-    print("📊 Estatísticas principais:")
-
-    print("Total bookmarks:", analysis["total_bookmarks"])
-    print("Domínios únicos:", analysis["unique_domains"])
-    print("Duplicados:", len(analysis["duplicate_urls"]))
-
-    return analysis
-
-
-def analyze_domains(bookmarks: list[Bookmark]) -> None:
-    """
-    Mostra ranking dos domínios mais frequentes.
-    """
-
-    print("🌐 Analisando domínios...")
-
-    domain_analyzer = DomainAnalyzer()
-    top_domains = domain_analyzer.analyze(bookmarks)
-
-    print("\n🏆 TOP DOMÍNIOS\n")
-
-    for item in top_domains[:10]:
-        print(f"{item['domain']} → {item['count']}")
+def save_bookmarks(conn: sqlite3.Connection, bookmarks: List[Bookmark]) -> None:
+    """Salva bookmarks no banco, ignorando duplicados por URL."""
+    c: sqlite3.Cursor = conn.cursor()
+    for bm in bookmarks:
+        c.execute(
+            """
+            INSERT OR IGNORE INTO bookmarks (title, url, domain, category, add_date, folder)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                bm["title"],
+                bm["url"],
+                bm["domain"],
+                bm["category"],
+                bm["add_date"],
+                bm["folder"],
+            ),
+        )
+    conn.commit()
 
 
-def classify_domains(bookmarks: list[Bookmark]) -> dict[str, int]:
-    """
-    Classifica domínios por categoria.
-    """
-
-    print("🧠 Classificando domínios...")
-
-    classifier = DomainClassifier()
-    domain_stats = classifier.classify(bookmarks)
-
-    print("📊 Categorias:")
-
-    for category, count in sorted(
-        domain_stats.items(),
-        key=lambda x: x[1],
-        reverse=True,
-    ):
-        print(f"{category}: {count}")
-
-    return domain_stats
-
-
-async def check_links(bookmarks: list[Bookmark]) -> list[LinkStatus]:
-    """
-    Verifica status HTTP dos links.
-    """
-
-    print(f"🔗 Verificando {len(bookmarks)} links...")
-
-    checker = LinkChecker(max_connections=20)
-
-    results = await checker.check_links(bookmarks)
-
-    print(f"✅ {len(results)} links verificados")
-
-    return results
-
-
-def export_results(bookmarks: list[Bookmark]) -> None:
-    """
-    Exporta resultados da análise.
-    """
-
-    print("💾 Exportando JSON...")
-
-    exporter = JSONExporter(str(OUTPUT_JSON))
-    exporter.export(bookmarks)
-
-    print(f"✅ JSON salvo em: {OUTPUT_JSON.resolve()}")
-
-
-# ---------------------------------------------------------
-# MAIN PIPELINE
-# ---------------------------------------------------------
+def save_summary(conn: sqlite3.Connection, analysis: AnalysisResult) -> None:
+    """Salva o resumo da análise no banco."""
+    c: sqlite3.Cursor = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO analysis_summary (total_bookmarks, unique_domains, duplicate_count)
+        VALUES (?, ?, ?)
+        """,
+        (
+            analysis["total_bookmarks"],
+            analysis["unique_domains"],
+            len(analysis["duplicate_urls"]),
+        ),
+    )
+    conn.commit()
 
 
 def main() -> None:
     """
-    Executa o pipeline completo de análise.
+    Executa pipeline completo:
+    1. Lê bookmarks HTML
+    2. Analisa e classifica domínios
+    3. Salva histórico incremental no SQLite
+    4. Exporta resultado em JSON
     """
 
-    bookmarks = parse_bookmarks()
+    # Inicializa banco
+    init_db()
 
-    analyze_bookmarks(bookmarks)
+    # Define arquivo de entrada
+    input_file: Path = Path.home() / "Documents/bookmarks_3_5_26.html"
+    print(f"📂 Lendo arquivo de bookmarks: {input_file}")
+    parser = BookmarkParser(str(input_file))
+    bookmarks: List[Bookmark] = parser.parse()
+    print(f"✅ {len(bookmarks)} bookmarks carregados")
 
-    analyze_domains(bookmarks)
+    # -------------------------
+    # Análise
+    # -------------------------
+    analyzer = BookmarkAnalyzer()
+    analysis: AnalysisResult = analyzer.analyze(bookmarks)
+    print(f"Total bookmarks: {analysis['total_bookmarks']}")
+    print(f"Domínios únicos: {analysis['unique_domains']}")
+    print(f"Duplicados: {len(analysis['duplicate_urls'])}")
 
-    classify_domains(bookmarks)
+    # -------------------------
+    # Salvando no SQLite
+    # -------------------------
+    conn: sqlite3.Connection = sqlite3.connect(DB_PATH)
+    save_bookmarks(conn, bookmarks)
+    save_summary(conn, analysis)
+    conn.close()
 
-    asyncio.run(check_links(bookmarks))
-
-    export_results(bookmarks)
+    # -------------------------
+    # Exportando JSON
+    # -------------------------
+    exporter = JSONExporter(str(OUTPUT_FILE))
+    exporter.export(bookmarks)
+    print(f"✅ JSON salvo em: {OUTPUT_FILE.resolve()}")
 
 
 if __name__ == "__main__":

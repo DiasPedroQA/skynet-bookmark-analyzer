@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/diaspedro/Desktop/transformers/SkyNet-Full/.venv
+set -gx VIRTUAL_ENV /home/diaspedro/Desktop/transformers/skynet-bookmark-analyzer/.venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

@@ -2,12 +2,14 @@
 # Python
 # ----------------------
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
 *.env
-*.venv/
-.env
+*.venv
+.venv/
+env/
+venv/
 
 # ----------------------
 # VSCode
@@ -22,8 +24,8 @@ __pycache__/
 # ----------------------
 # Banco de dados e saída
 # ----------------------
-data/*.db       # Não versiona bancos locais
-output/         # Não versiona arquivos de exportação JSON
+data/*.db
+output/*
 
 # ----------------------
 # Logs e caches
@@ -37,3 +39,7 @@ output/         # Não versiona arquivos de exportação JSON
 *.swp
 *.swo
 *.tmp
+
+# ----------------------
+# Output files
+# ----------------------

@@ -8,5 +8,5 @@ httpx==0.28.1
 idna==3.11
 soupsieve==2.8.3
 typing_extensions==4.15.0
-requests>=2.31.0          # para checagem de links
-aiohttp>=3.9.3            # para requests assíncronos
+requests>=2.31.0
+aiohttp>=3.9.3

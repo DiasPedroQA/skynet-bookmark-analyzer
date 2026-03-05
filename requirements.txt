@@ -1,5 +1,6 @@
 anyio==4.12.1
-beautifulsoup4==4.14.3
+beautifulsoup4>=4.12.2
+lxml>=4.9.3
 certifi==2026.2.25
 h11==0.16.0
 httpcore==1.0.9
@@ -7,3 +8,5 @@ httpx==0.28.1
 idna==3.11
 soupsieve==2.8.3
 typing_extensions==4.15.0
+requests>=2.31.0          # para checagem de links
+aiohttp>=3.9.3            # para requests assíncronos

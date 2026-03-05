@@ -1,4 +1,6 @@
+# ----------------------
 # Python
+# ----------------------
 __pycache__/
 *.py[cod]
 *.pyo
@@ -7,18 +9,31 @@ __pycache__/
 *.venv/
 .env
 
+# ----------------------
 # VSCode
+# ----------------------
 .vscode/
 
+# ----------------------
 # MacOS
+# ----------------------
 .DS_Store
 
-# Arquivos de banco de dados e output
-data/*.db
-output/
+# ----------------------
+# Banco de dados e saída
+# ----------------------
+data/*.db       # Não versiona bancos locais
+output/         # Não versiona arquivos de exportação JSON
 
-# Logs
+# ----------------------
+# Logs e caches
+# ----------------------
 *.log
-
-# Pytest cache
 .pytest_cache/
+
+# ----------------------
+# Arquivos temporários
+# ----------------------
+*.swp
+*.swo
+*.tmp
